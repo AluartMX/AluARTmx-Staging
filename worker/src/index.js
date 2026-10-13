@@ -31,6 +31,11 @@ export default {
   },
   async handle(request,env) {
     const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname === '/public-config') {
+      if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY)
+        return respond({error:'Configuración pública no disponible'},503);
+      return respond({supabase_url:env.SUPABASE_URL,publishable_key:env.SUPABASE_PUBLISHABLE_KEY,entorno:'staging'});
+    }
 
 
     if (request.method === 'GET' && url.pathname === '/activar') {
