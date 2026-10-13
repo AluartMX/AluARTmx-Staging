@@ -1,0 +1,15 @@
+name = "aluartmx-admin-staging"
+main = "src/index.js"
+compatibility_date = "2026-10-13"
+workers_dev = true
+
+# Worker independiente: NO modificar aluartmx-api-v4-prueba.
+# La URL de Pages debe coincidir exactamente con Origin (sin slash final).
+[vars]
+SUPABASE_URL = "https://bndefaelluvhivrqtalf.supabase.co"
+ALUARTMX_STAGING_ORIGIN = "https://aluartmx-staging.pages.dev"
+
+# Configurar mediante Cloudflare Dashboard (Secrets, nunca GitHub):
+# SUPABASE_SERVICE_ROLE_KEY
+# SUPERADMIN_USER_ID
+# SUPABASE_PUBLISHABLE_KEY (clave publica, puede configurarse como variable)
