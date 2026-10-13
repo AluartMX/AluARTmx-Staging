@@ -6,7 +6,21 @@ let token='',key='',currentRequestId='';
 const status=s=>{$('status').textContent=s};
 function busy(id,on){$(id).disabled=on}
 async function call(path,method='GET',body,idem){const headers={Authorization:'Bearer '+token};if(body!==undefined)headers['Content-Type']='application/json';if(idem)headers['Idempotency-Key']=idem;const res=await fetch(API+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});let data;try{data=await res.json()}catch{throw Error('Respuesta no JSON del Worker ('+res.status+')')}if(!res.ok)throw Error(data.error||'Error HTTP '+res.status);return data}
-async function load(){busy('refresh',true);try{const data=await call('/admin/companies');const root=$('companies');root.replaceChildren();const list=data.empresas||[];if(!list.length){root.textContent='Todavía no hay empresas.';return}for(const x of list){const d=document.createElement('div');d.className='item';const title=document.createElement('strong');title.textContent=x.nombre||'Sin nombre';const info=document.createElement('small');info.textContent=[x.tipo,x.plan_comercial,x.activa?'Activa':'Inactiva','ID: '+x.id].filter(Boolean).join(' · ');d.append(title,info);root.append(d)}}catch(e){status(e.message)}finally{busy('refresh',false)}}
+async function load(){busy('refresh',true);try{
+ const data=await call('/admin/companies');const root=$('companies');root.replaceChildren();
+ const list=data.empresas||[];if(!list.length){root.textContent='Todavía no hay empresas.';return}
+ const names=new Map();for(const x of list){const k=String(x.nombre||'').trim().toLocaleLowerCase('es');names.set(k,(names.get(k)||0)+1)}
+ const summary=document.createElement('p');summary.className='hint';summary.textContent=list.length+' empresas registradas · '+list.filter(x=>x.activa).length+' activas · '+list.filter(x=>!x.activa).length+' inactivas';root.append(summary);
+ for(const x of list){
+  const d=document.createElement('div');d.className='item';const title=document.createElement('strong');title.textContent=x.nombre||'Sin nombre';
+  const info=document.createElement('small');info.textContent=[x.tipo,x.plan_comercial,x.activa?'Activa':'Inactiva','ID: '+x.id].filter(Boolean).join(' · ');
+  const details=document.createElement('small');const total=Number(x.limite_cuadros),used=Number(x.creditos_demo_consumidos);
+  details.textContent=Number.isFinite(total)&&Number.isFinite(used)?'Créditos: '+Math.max(0,total-used)+' disponibles / '+total+' asignados · '+used+' consumidos':'Créditos: sin datos suficientes';
+  d.append(title,info,details);
+  if((names.get(String(x.nombre||'').trim().toLocaleLowerCase('es'))||0)>1){const warning=document.createElement('small');warning.textContent='⚠ Nombre repetido; revisar identificadores antes de modificar';d.append(warning)}
+  root.append(d)
+ }
+}catch(e){status(e.message)}finally{busy('refresh',false)}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();busy('connect',true);status('Verificando credenciales de staging…');key=$('publicKey').value.trim();const email=$('email').value.trim();try{if(!/^sb_publishable_|^eyJ/.test(key))throw Error('Introduce una clave pública válida de Supabase staging');const r=await fetch(SB+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json',apikey:key},body:JSON.stringify({email,password:$('password').value}),cache:'no-store'});const auth=await r.json();if(!r.ok||!auth.access_token)throw Error(auth.msg||auth.error_description||auth.error||'Credenciales inválidas');token=auth.access_token;const me=await call('/admin/me');if(me.autorizado!==true||me.rol!=='superadmin')throw Error('La cuenta no tiene permisos de superadministrador en staging');$('password').value='';$('publicKey').value='';$('login').hidden=true;$('dashboard').hidden=false;$('account').textContent='Conectado como '+email+' (staging)';status('Conexión administrativa verificada');await load()}catch(err){token='';status(err.message)}finally{busy('connect',false)}});
 $('refresh').addEventListener('click',load);
 $('logout').addEventListener('click',()=>{token='';key='';$('dashboard').hidden=true;$('login').hidden=false;$('companies').replaceChildren();status('Sesión cerrada')});
