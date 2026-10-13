@@ -1,0 +1,25 @@
+name: Validate staging Worker
+on:
+  push:
+    paths:
+      - 'worker/**'
+      - '.github/workflows/worker-check.yml'
+  pull_request:
+    paths:
+      - 'worker/**'
+      - '.github/workflows/worker-check.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and CORS checks
+        run: npm run validate
