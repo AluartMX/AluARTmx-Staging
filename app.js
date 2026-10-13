@@ -2,13 +2,13 @@
 const SB='https://bndefaelluvhivrqtalf.supabase.co';
 const API='https://aluartmx-admin-staging.jinscout6.workers.dev';
 const $=id=>document.getElementById(id);
-let token='',currentRequestId='';
+let token='',currentRequestId='',allCompanies=[];
 const status=s=>{$('status').textContent=s};
 function busy(id,on){$(id).disabled=on}
 async function call(path,method='GET',body,idem){const headers={Authorization:'Bearer '+token};if(body!==undefined)headers['Content-Type']='application/json';if(idem)headers['Idempotency-Key']=idem;const res=await fetch(API+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body),cache:'no-store'});let data;try{data=await res.json()}catch{throw Error('Respuesta no JSON del Worker ('+res.status+')')}if(!res.ok)throw Error(data.error||'Error HTTP '+res.status);return data}
 async function load(){busy('refresh',true);try{
  const data=await call('/admin/companies');const root=$('companies');root.replaceChildren();
- const list=data.empresas||[];if(!list.length){root.textContent='Todavía no hay empresas.';return}
+ const list=data.empresas||[];allCompanies=list;const selector=$('invitationCompany');const previous=selector.value;selector.replaceChildren();const empty=document.createElement('option');empty.value='';empty.textContent='Selecciona una empresa';selector.append(empty);for(const co of list){const option=document.createElement('option');option.value=co.id;option.textContent=co.nombre+' · '+co.id.slice(0,8);selector.append(option)}selector.value=list.some(co=>co.id===previous)?previous:'';if(!list.length){root.textContent='Todavía no hay empresas.';return}
  const names=new Map();for(const x of list){const k=String(x.nombre||'').trim().toLocaleLowerCase('es');names.set(k,(names.get(k)||0)+1)}
  const summary=document.createElement('p');summary.className='hint';summary.textContent=list.length+' empresas registradas · '+list.filter(x=>x.activa).length+' activas · '+list.filter(x=>!x.activa).length+' inactivas';root.append(summary);
  for(const x of list){
@@ -18,11 +18,14 @@ async function load(){busy('refresh',true);try{
   details.textContent=Number.isFinite(total)&&Number.isFinite(used)?'Créditos: '+Math.max(0,total-used)+' disponibles / '+total+' asignados · '+used+' consumidos':'Créditos: sin datos suficientes';
   d.append(title,info,details);
   if((names.get(String(x.nombre||'').trim().toLocaleLowerCase('es'))||0)>1){const warning=document.createElement('small');warning.textContent='⚠ Nombre repetido; revisar identificadores antes de modificar';d.append(warning)}
-  root.append(d)
- }
+  d.dataset.search=(String(x.nombre||'')+' '+x.id).toLocaleLowerCase('es');root.append(d)
+ }filterCompanies();
 }catch(e){status(e.message)}finally{busy('refresh',false)}}
+function filterCompanies(){const q=$('searchCompanies').value.trim().toLocaleLowerCase('es');for(const item of $('companies').querySelectorAll('.item'))item.hidden=!item.dataset.search.includes(q)}
+$('searchCompanies').addEventListener('input',filterCompanies);
+$('invitationForm').addEventListener('submit',async e=>{e.preventDefault();const id=$('invitationCompany').value;if(!id)return;busy('checkInvitations',true);const out=$('invitationResults');out.textContent='Consultando invitaciones…';try{const data=await call('/admin/invitations/status?empresa_id='+encodeURIComponent(id));out.replaceChildren();if(!data.reservas?.length){out.textContent='No hay invitaciones registradas para esta empresa.';return}for(const inv of data.reservas){const line=document.createElement('div');line.className='item';const name=document.createElement('strong');name.textContent=inv.correo||'Correo no disponible';const details=document.createElement('small');details.textContent='Estado: '+(inv.estado||'desconocido')+' · '+(inv.actualizada_en||inv.creada_en||'Sin fecha');line.append(name,details);if(inv.detalle_error){const note=document.createElement('small');note.textContent='Requiere revisión: '+inv.detalle_error;line.append(note)}out.append(line)}}catch(err){out.textContent=err.message}finally{busy('checkInvitations',false)}});
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();busy('connect',true);status('Verificando credenciales de staging…');const email=$('email').value.trim();try{const cfg=await fetch(API+'/public-config',{cache:'no-store'});if(!cfg.ok)throw Error('Configuración de acceso no disponible: espera a que termine el despliegue del Worker');const publicConfig=await cfg.json();if(publicConfig.supabase_url!==SB||!publicConfig.publishable_key)throw Error('Configuración pública de staging inválida');const r=await fetch(SB+'/auth/v1/token?grant_type=password',{method:'POST',headers:{'Content-Type':'application/json',apikey:publicConfig.publishable_key},body:JSON.stringify({email,password:$('password').value}),cache:'no-store'});const auth=await r.json();if(!r.ok||!auth.access_token)throw Error(auth.msg||auth.error_description||auth.error||'Credenciales inválidas');token=auth.access_token;const me=await call('/admin/me');if(me.autorizado!==true||me.rol!=='superadmin')throw Error('La cuenta no tiene permisos de superadministrador en staging');$('password').value='';$('login').hidden=true;$('dashboard').hidden=false;$('account').textContent='Conectado como '+email+' (staging)';status('Conexión administrativa verificada');await load()}catch(err){token='';status(err.message)}finally{busy('connect',false)}});
 $('refresh').addEventListener('click',load);
-$('logout').addEventListener('click',()=>{token='';$('dashboard').hidden=true;$('login').hidden=false;$('companies').replaceChildren();status('Sesión cerrada')});
+$('logout').addEventListener('click',()=>{token='';$('dashboard').hidden=true;$('login').hidden=false;$('companies').replaceChildren();$('invitationResults').replaceChildren();$('invitationCompany').replaceChildren();allCompanies=[];status('Sesión cerrada')});
 $('createForm').addEventListener('submit',async e=>{e.preventDefault();const nombre=$('companyName').value.trim(),tipo=$('companyType').value;if(!nombre)return;if(!confirm('¿Crear la empresa DEMO INACTIVA «'+nombre+'» en Supabase staging?'))return;busy('create',true);status('Creando empresa inactiva…');try{if(!currentRequestId)currentRequestId=crypto.randomUUID();const r=await call('/admin/companies','POST',{nombre,tipo},currentRequestId);currentRequestId='';$('companyName').value='';status(r.nota||'Empresa de prueba creada');await load()}catch(err){status(err.message+' · Si hubo error de red, reintenta sin cambiar nombre o tipo.')}finally{busy('create',false)}});
 $('companyName').addEventListener('input',()=>{currentRequestId=''});$('companyType').addEventListener('change',()=>{currentRequestId=''});
